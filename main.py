@@ -9,11 +9,12 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or restrict to ["https://kdpformatter.com"]
+    allow_origins=["https://kdpformatter.com"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.post("/format")
 async def format_book(
@@ -30,7 +31,8 @@ async def format_book(
     pdf_filename = f"{uuid.uuid4()}.pdf"
     pdf_path = f"/tmp/{pdf_filename}"
 
-    generate_pdf(content, heading_font, body_font, heading_size, body_size, trim_size, pdf_path)
+    generate_pdf(content, heading_font, body_font,
+                 heading_size, body_size, trim_size, pdf_path)
 
     pdf_url = upload_to_supabase(pdf_filename, pdf_path)
 
