@@ -7,10 +7,9 @@ import os
 
 app = FastAPI()
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://kdpformatter.com"],  # ✅ Set this correctly
+    allow_origins=["https://kdpformatter.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
