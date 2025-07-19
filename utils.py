@@ -4,12 +4,14 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import inch
 
+from supabase import create_client, Client
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = "pdfs"  # make sure this matches your bucket!
+
 
 def register_fonts():
-    """
-    Automatically register all .ttf fonts in the ./fonts directory.
-    The font name will be the file name without extension (e.g. Roboto-Regular).
-    """
     fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
     if not os.path.isdir(fonts_dir):
         print("⚠️ No fonts directory found.")
@@ -34,10 +36,6 @@ def generate_pdf(
     body_size: int = 12,
     trim_size: str = "6x9"
 ):
-    """
-    Generates a PDF file at output_path with given formatting options.
-    """
-    # KDP trim size mapping (in inches)
     trim_sizes = {
         "5x8": (5 * inch, 8 * inch),
         "5.5x8.5": (5.5 * inch, 8.5 * inch),
@@ -51,9 +49,9 @@ def generate_pdf(
     width, height = page_size
 
     # Draw heading
-    y = height - inch * 1  # 1 inch margin from top
+    y = height - inch * 1
     c.setFont(heading_font, heading_size)
-    c.drawString(inch, y, "Your Book Title")  # You can customize this
+    c.drawString(inch, y, "Your Book Title")
 
     # Draw body text
     y -= heading_size + 0.3 * inch
@@ -69,6 +67,13 @@ def generate_pdf(
     c.save()
     print(f"✅ PDF generated at: {output_path}")
 
-# Example usage:
-# register_fonts()
-# generate_pdf("output.pdf", "Hello world\nThis is a test.", heading_font="Lora-Regular", body_font="Roboto-Regular")
+
+def upload_pdf_to_supabase(pdf_path, pdf_filename):
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    with open(pdf_path, "rb") as f:
+        # Overwrite if exists: upsert True
+        res = supabase.storage.from_(SUPABASE_BUCKET).upload(
+            pdf_filename, f, {"content-type": "application/pdf", "upsert": True})
+    # Build public URL for file
+    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{pdf_filename}"
+    return public_url

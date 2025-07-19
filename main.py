@@ -1,15 +1,11 @@
-from fastapi.responses import FileResponse
 import os
 import uuid
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from starlette.background import BackgroundTasks
-from utils import register_fonts, generate_pdf
+from utils import register_fonts, generate_pdf, upload_pdf_to_supabase
 from docx import Document
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 # ---- 1. Register fonts at startup ----
 register_fonts()
@@ -19,7 +15,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://kdpformatter.com",
-                   "http://localhost:3000"],  # Edit if needed
+                   "http://localhost:3000"],  # Add more as needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,16 +32,7 @@ def docx_to_text(file_path):
         print(f"Error reading DOCX: {e}")
         return ""
 
-# ---- 4. Helper: Remove PDF after 24h ----
-
-
-def schedule_file_removal(file_path: str):
-    try:
-        os.remove(file_path)
-    except Exception as e:
-        print(f"Could not delete file {file_path}: {e}")
-
-# ---- 5. Main PDF formatting endpoint ----
+# ---- 4. Main PDF formatting endpoint ----
 
 
 @app.post("/format")
@@ -54,15 +41,13 @@ async def format_book(
     pasted_text: str = Form(None),
     heading_font: str = Form("Roboto-Regular"),
     body_font: str = Form("Roboto-Regular"),
-    heading_size: int = Form(18),
-    body_size: int = Form(12),
+    heading_size: float = Form(18.0),      # Accepts decimals!
+    body_size: float = Form(12.0),         # Accepts decimals!
     trim_size: str = Form("6x9"),
     background_tasks: BackgroundTasks = None
 ):
-    # Accept either file (.docx) or pasted_text
     manuscript_text = ""
     if file:
-        # Save the uploaded docx to a temp path
         tmp_docx = f"/tmp/{uuid.uuid4()}.docx"
         with open(tmp_docx, "wb") as f:
             f.write(await file.read())
@@ -73,9 +58,10 @@ async def format_book(
     else:
         return JSONResponse({"error": "No manuscript provided."}, status_code=400)
 
-    # Output PDF path
+    # Output PDF path and filename for supabase
     output_id = uuid.uuid4()
-    pdf_path = f"/tmp/{output_id}.pdf"
+    pdf_filename = f"{output_id}.pdf"
+    pdf_path = f"/tmp/{pdf_filename}"
     generate_pdf(
         output_path=pdf_path,
         manuscript_text=manuscript_text,
@@ -86,19 +72,20 @@ async def format_book(
         trim_size=trim_size,
     )
 
-    # Upload to Supabase Storage (implement this as needed)
-    # Example: pdf_url = upload_to_supabase(pdf_path, output_id)
+    # ---- Upload to Supabase Storage ----
+    try:
+        pdf_url = upload_pdf_to_supabase(pdf_path, pdf_filename)
+    except Exception as e:
+        print(f"Error uploading PDF to Supabase: {e}")
+        return JSONResponse({"error": "PDF upload failed"}, status_code=500)
 
-    # For now, serve locally (for testing)
-    download_url = f"/download/{output_id}"
+    # (Optional) Delete local PDF file after upload
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
 
-    # Schedule file removal in 24h (not persistent! For prod, use cloud jobs)
-    if background_tasks:
-        background_tasks.add_task(schedule_file_removal, pdf_path)
+    return JSONResponse({"pdf_url": pdf_url})
 
-    return JSONResponse({"pdf_url": download_url})
-
-# ---- 6. Serve generated PDF for download (testing only, not for prod) ----
+# ---- 5. (Optional) Local file download endpoint for testing only ----
 
 
 @app.get("/download/{pdf_id}")
