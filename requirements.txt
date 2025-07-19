@@ -4,4 +4,6 @@ python-dotenv
 reportlab
 supabase
 python-multipart
+python-docx
+
 
