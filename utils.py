@@ -73,7 +73,7 @@ def upload_pdf_to_supabase(pdf_path, pdf_filename):
     with open(pdf_path, "rb") as f:
         # Overwrite if exists: upsert True
         res = supabase.storage.from_(SUPABASE_BUCKET).upload(
-            pdf_filename, f, {"content-type": "application/pdf", "upsert": True})
+            pdf_filename, f, {"content-type": "application/pdf", "upsert": "True"})
     # Build public URL for file
     public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{pdf_filename}"
     return public_url
