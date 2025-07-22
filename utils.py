@@ -3,15 +3,15 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, ListFlowable, ListItem
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from supabase import create_client, Client
+from docx import Document
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = "pdfs"
-
 
 def register_fonts():
     fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
@@ -28,17 +28,71 @@ def register_fonts():
             except Exception as e:
                 print(f"❌ Could not register font {font_name}: {e}")
 
+def parse_docx_to_story(
+    docx_path,
+    styles,
+    body_font="Roboto-Regular",
+    heading_font="Roboto-Regular"
+):
+    doc = Document(docx_path)
+    story = []
+    list_buffer = []
+    last_list_style = None
+
+    def flush_list():
+        nonlocal list_buffer, last_list_style
+        if list_buffer:
+            bullet_type = 'bullet' if last_list_style == 'ListBullet' else 'number'
+            story.append(ListFlowable(
+                list_buffer, 
+                bulletType=bullet_type, 
+                start='1' if bullet_type == 'number' else None,
+                leftIndent=18
+            ))
+            list_buffer = []
+            last_list_style = None
+
+    for para in doc.paragraphs:
+        text = ""
+        # Compose text with inline formatting (HTML-style tags)
+        for run in para.runs:
+            t = run.text.replace('\n', ' ')
+            if not t: continue
+            if run.bold: t = f"<b>{t}</b>"
+            if run.italic: t = f"<i>{t}</i>"
+            if run.underline: t = f"<u>{t}</u>"
+            text += t
+
+        style = para.style.name if hasattr(para.style, 'name') else ""
+        if style.startswith('Heading'):
+            flush_list()
+            story.append(Spacer(1, 14))
+            story.append(Paragraph(text, styles["BookHeading"]))
+            story.append(Spacer(1, 10))
+        elif style in ("ListBullet", "List Number", "ListParagraph"):
+            if last_list_style and style != last_list_style:
+                flush_list()
+            list_buffer.append(ListItem(Paragraph(text, styles["BookBody"])))
+            last_list_style = style
+        elif text.strip() == "":
+            flush_list()
+            story.append(Spacer(1, 8))
+        else:
+            flush_list()
+            story.append(Paragraph(text, styles["BookBody"]))
+
+    flush_list()
+    return story
 
 def generate_pdf(
     output_path: str,
-    manuscript_text: str,
+    manuscript_file_path: str,   # Note: Now expects path to DOCX!
     heading_font: str = "Roboto-Regular",
     body_font: str = "Roboto-Regular",
     heading_size: float = 18.0,
     body_size: float = 12.0,
     trim_size: str = "6x9",
     bleed: bool = False,
-    # inches, default gutter (KDP typical is 0.25-0.375 for most books)
     gutter: float = 0.25
 ):
     # --- KDP Trim Sizes ---
@@ -52,14 +106,11 @@ def generate_pdf(
     page_size = trim_sizes.get(trim_size, (6 * inch, 9 * inch))
     width, height = page_size
 
-    # --- Margins (KDP typical: 0.75" outer/top/bottom, 0.25" inner/gutter) ---
     outer_margin = 0.75 * inch
     top_margin = 0.75 * inch
     bottom_margin = 0.75 * inch
     inner_margin = outer_margin + (gutter * inch)
-    # Bleed: not used for now; set all to "no bleed" default
 
-    # --- Setup Styles ---
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
         name="BookBody",
@@ -89,19 +140,13 @@ def generate_pdf(
     )
 
     story = []
-
-    # --- Title Page (simple version) ---
+    # --- Title Page (optional, could be improved) ---
     story.append(Spacer(1, height // 5))
     story.append(Paragraph("Your Book Title", styles["BookHeading"]))
     story.append(PageBreak())
 
-    # --- Main Body ---
-    for para in manuscript_text.split("\n"):
-        para = para.strip()
-        if not para:
-            story.append(Spacer(1, body_size))
-        else:
-            story.append(Paragraph(para, styles["BookBody"]))
+    # --- Parse DOCX file to story (with formatting) ---
+    story += parse_docx_to_story(manuscript_file_path, styles, body_font=body_font, heading_font=heading_font)
 
     # --- Page Numbers ---
     def add_page_number(canvas, doc):
@@ -113,7 +158,6 @@ def generate_pdf(
 
     doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
     print(f"✅ PDF generated at: {output_path}")
-
 
 def upload_pdf_to_supabase(pdf_path, pdf_filename):
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
