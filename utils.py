@@ -81,10 +81,12 @@ def iter_block_items(parent):
     else:
         return
     for child in parent_elm.iterchildren():
-        if isinstance(child, CT_P):
+        # Use .tag to identify paragraphs and tables (never isinstance with CT_P/CT_Tbl)
+        if child.tag.endswith('}p'):
             yield DocxParagraph(child, parent)
-        elif isinstance(child, CT_Tbl):
+        elif child.tag.endswith('}tbl'):
             yield Table(child, parent)
+
 
 def parse_docx_to_story(docx_path, styles, body_font="Roboto-Regular",
                         heading_font="Roboto-Regular", body_font_size=12):
