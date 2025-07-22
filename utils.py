@@ -3,9 +3,13 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, ListFlowable, ListItem
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, PageBreak,
+    ListFlowable, ListItem, Table as RLTable, TableStyle
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
+from reportlab.lib import colors
 from supabase import create_client, Client
 from docx import Document
 
@@ -28,6 +32,29 @@ def register_fonts():
             except Exception as e:
                 print(f"❌ Could not register font {font_name}: {e}")
 
+def extract_book_title(docx_path):
+    doc = Document(docx_path)
+    # Try Heading 1 first
+    for para in doc.paragraphs:
+        if para.style.name.startswith("Heading") and "1" in para.style.name and para.text.strip():
+            return para.text.strip()
+    # Fallback: first non-empty paragraph
+    for para in doc.paragraphs:
+        if para.text.strip():
+            return para.text.strip()
+    return "Untitled Manuscript"
+
+def is_bullet_paragraph(para):
+    style = para.style.name if hasattr(para.style, 'name') else ""
+    if "List" in style or "Bullet" in style or "Number" in style:
+        return True
+    try:
+        if para._element.numPr is not None:
+            return True
+    except Exception:
+        pass
+    return False
+
 def parse_docx_to_story(
     docx_path,
     styles,
@@ -38,38 +65,47 @@ def parse_docx_to_story(
     story = []
     list_buffer = []
     last_list_style = None
+    used_title = False
 
     def flush_list():
         nonlocal list_buffer, last_list_style
         if list_buffer:
-            bullet_type = 'bullet' if last_list_style == 'ListBullet' else 'number'
             story.append(ListFlowable(
-                list_buffer, 
-                bulletType=bullet_type, 
-                start='1' if bullet_type == 'number' else None,
+                list_buffer,
+                bulletType='bullet',
                 leftIndent=18
             ))
             list_buffer = []
             last_list_style = None
+
+    book_title = extract_book_title(docx_path)
 
     for para in doc.paragraphs:
         text = ""
         # Compose text with inline formatting (HTML-style tags)
         for run in para.runs:
             t = run.text.replace('\n', ' ')
-            if not t: continue
-            if run.bold: t = f"<b>{t}</b>"
-            if run.italic: t = f"<i>{t}</i>"
-            if run.underline: t = f"<u>{t}</u>"
+            if not t:
+                continue
+            if run.bold:
+                t = f"<b>{t}</b>"
+            if run.italic:
+                t = f"<i>{t}</i>"
+            if run.underline:
+                t = f"<u>{t}</u>"
             text += t
 
         style = para.style.name if hasattr(para.style, 'name') else ""
+        # Skip the real title if it was just used on the title page
+        if not used_title and text.strip() == book_title:
+            used_title = True
+            continue
         if style.startswith('Heading'):
             flush_list()
             story.append(Spacer(1, 14))
             story.append(Paragraph(text, styles["BookHeading"]))
             story.append(Spacer(1, 10))
-        elif style in ("ListBullet", "List Number", "ListParagraph"):
+        elif is_bullet_paragraph(para):
             if last_list_style and style != last_list_style:
                 flush_list()
             list_buffer.append(ListItem(Paragraph(text, styles["BookBody"])))
@@ -82,11 +118,29 @@ def parse_docx_to_story(
             story.append(Paragraph(text, styles["BookBody"]))
 
     flush_list()
+
+    # --- Add DOCX tables as reportlab tables at the end (can be improved to insert inline with paragraphs) ---
+    for table in doc.tables:
+        data = []
+        for row in table.rows:
+            data.append([cell.text for cell in row.cells])
+        t = RLTable(data, hAlign='LEFT')
+        t.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (-1,-1), body_font),
+            ('FONTSIZE', (0,0), (-1,-1), 12),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ]))
+        story.append(Spacer(1, 8))
+        story.append(t)
+        story.append(Spacer(1, 8))
+
     return story
 
 def generate_pdf(
     output_path: str,
-    manuscript_file_path: str,   # Note: Now expects path to DOCX!
+    manuscript_file_path: str,   # Expects path to DOCX!
     heading_font: str = "Roboto-Regular",
     body_font: str = "Roboto-Regular",
     heading_size: float = 18.0,
@@ -95,7 +149,6 @@ def generate_pdf(
     bleed: bool = False,
     gutter: float = 0.25
 ):
-    # --- KDP Trim Sizes ---
     trim_sizes = {
         "5x8": (5 * inch, 8 * inch),
         "5.5x8.5": (5.5 * inch, 8.5 * inch),
@@ -139,16 +192,16 @@ def generate_pdf(
         bottomMargin=bottom_margin,
     )
 
+    # --- Use real book title from docx as title page ---
+    book_title = extract_book_title(manuscript_file_path)
     story = []
-    # --- Title Page (optional, could be improved) ---
     story.append(Spacer(1, height // 5))
-    story.append(Paragraph("Your Book Title", styles["BookHeading"]))
+    story.append(Paragraph(book_title, styles["BookHeading"]))
     story.append(PageBreak())
 
-    # --- Parse DOCX file to story (with formatting) ---
+    # --- Parse DOCX file to story (with formatting, lists, tables) ---
     story += parse_docx_to_story(manuscript_file_path, styles, body_font=body_font, heading_font=heading_font)
 
-    # --- Page Numbers ---
     def add_page_number(canvas, doc):
         page_num_text = "%d" % (doc.page)
         canvas.saveState()
