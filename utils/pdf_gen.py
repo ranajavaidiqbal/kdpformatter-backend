@@ -1,4 +1,5 @@
-from reportlab.platypus import SimpleDocTemplate, ParagraphStyle, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Spacer, PageBreak
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.pagesizes import inch
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.lib.styles import getSampleStyleSheet
