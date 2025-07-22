@@ -1,3 +1,8 @@
+from utils import (
+    register_fonts,
+    generate_pdf,
+    upload_pdf_to_supabase
+)
 import os
 import uuid
 from fastapi import FastAPI, File, UploadFile, Form
