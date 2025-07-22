@@ -75,7 +75,8 @@ class DropCapParagraph(Flowable):
 
 def iter_block_items(parent):
     # Defensive typing for docx elements
-    if isinstance(parent, DocxDocument):
+    from docx.document import Document as DocxDocumentType  # True docx Document class
+    if isinstance(parent, DocxDocumentType):
         parent_elm = parent.element.body
     elif isinstance(parent, _Cell):
         parent_elm = parent._tc
