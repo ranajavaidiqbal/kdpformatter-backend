@@ -1,9 +1,10 @@
-from reportlab.platypus import SimpleDocTemplate, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Spacer, PageBreak, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.pagesizes import inch
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.lib.styles import getSampleStyleSheet
 from .docx_parse import parse_docx_to_story, extract_book_title
+
 
 def generate_pdf(
     output_path: str,
