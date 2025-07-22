@@ -10,8 +10,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.lib import colors
 from supabase import create_client, Client
-from docx import Document
-from docx.table import _Cell, Table
+from docx import Document as DocxDocument
+from docx.table import _Cell, Table as DocxTable
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph as DocxParagraph
@@ -36,7 +36,7 @@ def register_fonts():
                 print(f"❌ Could not register font {font_name}: {e}")
 
 def extract_book_title(docx_path):
-    doc = Document(docx_path)
+    doc = DocxDocument(docx_path)
     for para in doc.paragraphs:
         if para.style.name.startswith("Heading") and "1" in para.style.name and para.text.strip():
             return para.text.strip()
@@ -74,23 +74,22 @@ class DropCapParagraph(Flowable):
         self.canv.drawString(self.dropcap_size * 0.6, 0, self.rest_text)
 
 def iter_block_items(parent):
-    if isinstance(parent, Document):
+    # Defensive typing for docx elements
+    if isinstance(parent, DocxDocument):
         parent_elm = parent.element.body
     elif isinstance(parent, _Cell):
         parent_elm = parent._tc
     else:
         return
     for child in parent_elm.iterchildren():
-        # Use .tag to identify paragraphs and tables (never isinstance with CT_P/CT_Tbl)
-        if child.tag.endswith('}p'):
+        if isinstance(child, CT_P):  # paragraph
             yield DocxParagraph(child, parent)
-        elif child.tag.endswith('}tbl'):
-            yield Table(child, parent)
-
+        elif isinstance(child, CT_Tbl):  # table
+            yield DocxTable(child, parent)
 
 def parse_docx_to_story(docx_path, styles, body_font="Roboto-Regular",
                         heading_font="Roboto-Regular", body_font_size=12):
-    doc = Document(docx_path)
+    doc = DocxDocument(docx_path)
     story, list_buffer, last_list_style, used_title = [], [], None, False
 
     def flush_list():
@@ -140,7 +139,7 @@ def parse_docx_to_story(docx_path, styles, body_font="Roboto-Regular",
             else:
                 flush_list()
                 story.append(Paragraph(text, styles["BookBody"]))
-        elif isinstance(block, Table):
+        elif isinstance(block, DocxTable):
             flush_list()
             data = [[cell.text for cell in row.cells] for row in block.rows]
             t = RLTable(data, hAlign='LEFT', style=TableStyle([
