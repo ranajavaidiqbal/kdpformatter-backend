@@ -5,13 +5,17 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, PageBreak,
-    ListFlowable, ListItem, Table as RLTable, TableStyle
+    ListFlowable, ListItem, Table as RLTable, TableStyle, Flowable
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.lib import colors
 from supabase import create_client, Client
 from docx import Document
+from docx.table import _Cell, Table
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.text.paragraph import Paragraph as DocxParagraph
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -55,6 +59,40 @@ def is_bullet_paragraph(para):
         pass
     return False
 
+# Helper to handle drop caps in a very basic way
+class DropCapParagraph(Flowable):
+    def __init__(self, first_letter, rest_text, style, dropcap_size=30):
+        Flowable.__init__(self)
+        self.first_letter = first_letter
+        self.rest_text = rest_text
+        self.style = style
+        self.dropcap_size = dropcap_size
+
+    def wrap(self, availWidth, availHeight):
+        return availWidth, self.dropcap_size + 4
+
+    def draw(self):
+        self.canv.setFont(self.style.fontName, self.dropcap_size)
+        self.canv.drawString(0, 0, self.first_letter)
+        self.canv.setFont(self.style.fontName, self.style.fontSize)
+        self.canv.drawString(self.dropcap_size * 0.55, 0, self.rest_text)
+
+def iter_block_items(parent):
+    """
+    Yield paragraphs and tables in document order.
+    """
+    if isinstance(parent, Document):
+        parent_elm = parent.element.body
+    elif isinstance(parent, _Cell):
+        parent_elm = parent._tc
+    else:
+        return
+    for child in parent_elm.iterchildren():
+        if isinstance(child, CT_P):
+            yield DocxParagraph(child, parent)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, parent)
+
 def parse_docx_to_story(
     docx_path,
     styles,
@@ -80,62 +118,74 @@ def parse_docx_to_story(
 
     book_title = extract_book_title(docx_path)
 
-    for para in doc.paragraphs:
-        text = ""
-        # Compose text with inline formatting (HTML-style tags)
-        for run in para.runs:
-            t = run.text.replace('\n', ' ')
-            if not t:
-                continue
-            if run.bold:
-                t = f"<b>{t}</b>"
-            if run.italic:
-                t = f"<i>{t}</i>"
-            if run.underline:
-                t = f"<u>{t}</u>"
-            text += t
+    # Iterate paragraphs AND tables in order!
+    for block in iter_block_items(doc):
+        # Handle paragraph
+        if isinstance(block, DocxParagraph):
+            para = block
+            text = ""
+            for run in para.runs:
+                t = run.text.replace('\n', ' ')
+                if not t:
+                    continue
+                if run.bold:
+                    t = f"<b>{t}</b>"
+                if run.italic:
+                    t = f"<i>{t}</i>"
+                if run.underline:
+                    t = f"<u>{t}</u>"
+                text += t
 
-        style = para.style.name if hasattr(para.style, 'name') else ""
-        # Skip the real title if it was just used on the title page
-        if not used_title and text.strip() == book_title:
-            used_title = True
-            continue
-        if style.startswith('Heading'):
-            flush_list()
-            story.append(Spacer(1, 14))
-            story.append(Paragraph(text, styles["BookHeading"]))
-            story.append(Spacer(1, 10))
-        elif is_bullet_paragraph(para):
-            if last_list_style and style != last_list_style:
+            style = para.style.name if hasattr(para.style, 'name') else ""
+            # Skip the real title if it was just used on the title page
+            if not used_title and text.strip() == book_title:
+                used_title = True
+                continue
+            # Drop Cap detection: if style includes "Drop Cap" or (customize for your needs)
+            if "Drop Cap" in style:
                 flush_list()
-            list_buffer.append(ListItem(Paragraph(text, styles["BookBody"])))
-            last_list_style = style
-        elif text.strip() == "":
+                if text.strip():
+                    first_letter = text.strip()[0]
+                    rest_text = text.strip()[1:]
+                    # Use BookBody style for rest
+                    story.append(DropCapParagraph(first_letter, rest_text, styles["BookBody"], dropcap_size=body_font_size*2))
+                    story.append(Spacer(1, 6))
+                continue
+            if style.startswith('Heading'):
+                flush_list()
+                story.append(Spacer(1, 14))
+                story.append(Paragraph(text, styles["BookHeading"]))
+                story.append(Spacer(1, 10))
+            elif is_bullet_paragraph(para):
+                if last_list_style and style != last_list_style:
+                    flush_list()
+                list_buffer.append(ListItem(Paragraph(text, styles["BookBody"])))
+                last_list_style = style
+            elif text.strip() == "":
+                flush_list()
+                story.append(Spacer(1, 8))
+            else:
+                flush_list()
+                story.append(Paragraph(text, styles["BookBody"]))
+        # Handle tables in-order
+        elif isinstance(block, Table):
             flush_list()
+            data = []
+            for row in block.rows:
+                data.append([cell.text for cell in row.cells])
+            t = RLTable(data, hAlign='LEFT')
+            t.setStyle(TableStyle([
+                ('FONTNAME', (0,0), (-1,-1), body_font),
+                ('FONTSIZE', (0,0), (-1,-1), 12),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ]))
             story.append(Spacer(1, 8))
-        else:
-            flush_list()
-            story.append(Paragraph(text, styles["BookBody"]))
+            story.append(t)
+            story.append(Spacer(1, 8))
 
     flush_list()
-
-    # --- Add DOCX tables as reportlab tables at the end (can be improved to insert inline with paragraphs) ---
-    for table in doc.tables:
-        data = []
-        for row in table.rows:
-            data.append([cell.text for cell in row.cells])
-        t = RLTable(data, hAlign='LEFT')
-        t.setStyle(TableStyle([
-            ('FONTNAME', (0,0), (-1,-1), body_font),
-            ('FONTSIZE', (0,0), (-1,-1), 12),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ]))
-        story.append(Spacer(1, 8))
-        story.append(t)
-        story.append(Spacer(1, 8))
-
     return story
 
 def generate_pdf(
@@ -149,6 +199,9 @@ def generate_pdf(
     bleed: bool = False,
     gutter: float = 0.25
 ):
+    global body_font_size
+    body_font_size = body_size
+
     trim_sizes = {
         "5x8": (5 * inch, 8 * inch),
         "5.5x8.5": (5.5 * inch, 8.5 * inch),
@@ -199,7 +252,7 @@ def generate_pdf(
     story.append(Paragraph(book_title, styles["BookHeading"]))
     story.append(PageBreak())
 
-    # --- Parse DOCX file to story (with formatting, lists, tables) ---
+    # --- Parse DOCX file to story (with formatting, lists, tables, drop caps, order) ---
     story += parse_docx_to_story(manuscript_file_path, styles, body_font=body_font, heading_font=heading_font)
 
     def add_page_number(canvas, doc):
