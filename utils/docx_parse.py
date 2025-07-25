@@ -2,32 +2,33 @@ import re
 from docx import Document
 from docx.table import Table as DocxTable
 from docx.text.paragraph import Paragraph as DocxParagraph
-from reportlab.platypus import Paragraph, Spacer, ListFlowable, ListItem, PageBreak, Table as RLTable
-from reportlab.lib.styles import getSampleStyleSheet
-
-# You may import your custom styles if you define them elsewhere
+from reportlab.platypus import Paragraph, Spacer, ListFlowable, ListItem, Table as RLTable
 
 def is_bullet_paragraph(paragraph):
-    # Improved: Checks for both bullets and numbered lists
     if paragraph.style.name.lower().startswith('list'):
         return True
     if hasattr(paragraph, "numbering_format") and paragraph.numbering_format is not None:
         return True
-    # Fallback: Looks for symbols common to bullets (not foolproof)
     bullet_like = re.compile(r'^[•\-\*\u2022]')
     if bullet_like.match(paragraph.text.strip()):
         return True
     return False
 
 def get_heading_level(paragraph):
-    # Returns the heading level as integer, or None if not a heading
     if paragraph.style.name.startswith("Heading"):
         match = re.match(r"Heading (\d+)", paragraph.style.name)
         if match:
             return int(match.group(1))
     return None
 
-def parse_docx_to_story(docx_path, styles):
+def parse_docx_to_story(
+    docx_path,
+    styles,
+    body_font="Roboto-Regular",
+    heading_font="Roboto-Regular",
+    body_font_size=12.0,
+    heading_font_size=18.0,
+):
     doc = Document(docx_path)
     story = []
     list_buffer = []
@@ -56,7 +57,6 @@ def parse_docx_to_story(docx_path, styles):
             # Bullet/numbered lists
             if is_bullet_paragraph(block):
                 list_type = 'bullet'
-                # Try to detect numbers for ordered lists
                 if block.text.strip() and re.match(r'^\d+[\.\)]', block.text.strip()):
                     list_type = '1'  # ReportLab uses '1' for numbered
                 if last_list_type != list_type and list_buffer:
@@ -87,9 +87,6 @@ def parse_docx_to_story(docx_path, styles):
     return story
 
 def extract_rich_text(paragraph):
-    """
-    Preserves bold, italic, and underline using ReportLab's <b>, <i>, <u> markup.
-    """
     rich_text = ""
     for run in paragraph.runs:
         run_text = run.text.replace('\n', ' ')
@@ -105,25 +102,18 @@ def extract_rich_text(paragraph):
     return rich_text or paragraph.text
 
 def iter_block_items(parent):
-    """
-    Yield each paragraph and table child within parent, in document order.
-    """
     for child in parent.element.body.iterchildren():
         if child.tag.endswith('}p'):
             yield DocxParagraph(child, parent)
         elif child.tag.endswith('}tbl'):
             yield DocxTable(child, parent)
 
-# ---- ADD THIS FUNCTION BELOW ----
-
 def extract_book_title(docx_path):
     doc = Document(docx_path)
-    # Prefer Heading 1 or Title styles
     for para in doc.paragraphs:
         if para.style.name.lower() in ("title", "heading 1", "heading1"):
             if para.text.strip():
                 return para.text.strip()
-    # Fallback: first non-empty paragraph
     for para in doc.paragraphs:
         if para.text.strip():
             return para.text.strip()
