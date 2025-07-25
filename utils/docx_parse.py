@@ -1,125 +1,115 @@
-from docx import Document as DocxDocument
-from docx.table import _Cell, Table as DocxTable
-from docx.oxml.table import CT_Tbl
-from docx.oxml.text.paragraph import CT_P
+import re
+from docx import Document
+from docx.table import Table as DocxTable
 from docx.text.paragraph import Paragraph as DocxParagraph
-from reportlab.platypus import Paragraph, Spacer, ListFlowable, ListItem, Table as RLTable, TableStyle, Flowable
-from reportlab.lib import colors
+from reportlab.platypus import Paragraph, Spacer, ListFlowable, ListItem, PageBreak, Table as RLTable
+from reportlab.lib.styles import getSampleStyleSheet
 
-def extract_book_title(docx_path):
-    doc = DocxDocument(docx_path)
-    for para in doc.paragraphs:
-        if para.style.name.startswith("Heading") and "1" in para.style.name and para.text.strip():
-            return para.text.strip()
-    for para in doc.paragraphs:
-        if para.text.strip():
-            return para.text.strip()
-    return "Untitled Manuscript"
+# You may import your custom styles if you define them elsewhere
 
-def is_bullet_paragraph(para):
-    style = para.style.name if hasattr(para.style, 'name') else ""
-    if "List" in style or "Bullet" in style or "Number" in style:
+def is_bullet_paragraph(paragraph):
+    # Improved: Checks for both bullets and numbered lists
+    if paragraph.style.name.lower().startswith('list'):
         return True
-    try:
-        if para._element.numPr is not None:
-            return True
-    except Exception:
-        pass
+    if hasattr(paragraph, "numbering_format") and paragraph.numbering_format is not None:
+        return True
+    # Fallback: Looks for symbols common to bullets (not foolproof)
+    bullet_like = re.compile(r'^[•\-\*\u2022]')
+    if bullet_like.match(paragraph.text.strip()):
+        return True
     return False
 
-class DropCapParagraph(Flowable):
-    def __init__(self, first_letter, rest_text, style, dropcap_size=24):
-        Flowable.__init__(self)
-        self.first_letter = first_letter
-        self.rest_text = rest_text
-        self.style = style
-        self.dropcap_size = dropcap_size
+def get_heading_level(paragraph):
+    # Returns the heading level as integer, or None if not a heading
+    if paragraph.style.name.startswith("Heading"):
+        match = re.match(r"Heading (\d+)", paragraph.style.name)
+        if match:
+            return int(match.group(1))
+    return None
 
-    def wrap(self, availWidth, availHeight):
-        return availWidth, self.dropcap_size + 4
-
-    def draw(self):
-        self.canv.setFont(self.style.fontName, self.dropcap_size)
-        self.canv.drawString(0, 0, self.first_letter)
-        self.canv.setFont(self.style.fontName, self.style.fontSize)
-        self.canv.drawString(self.dropcap_size * 0.6, 0, self.rest_text)
-
-def iter_block_items(parent):
-    from docx.document import Document as DocxDocumentType
-    if isinstance(parent, DocxDocumentType):
-        parent_elm = parent.element.body
-    elif isinstance(parent, _Cell):
-        parent_elm = parent._tc
-    else:
-        return
-    for child in parent_elm.iterchildren():
-        if isinstance(child, CT_P):
-            yield DocxParagraph(child, parent)
-        elif isinstance(child, CT_Tbl):
-            yield DocxTable(child, parent)
-
-def parse_docx_to_story(docx_path, styles, body_font="Roboto-Regular",
-                        heading_font="Roboto-Regular", body_font_size=12):
-    doc = DocxDocument(docx_path)
-    story, list_buffer, last_list_style, used_title = [], [], None, False
+def parse_docx_to_story(docx_path, styles):
+    doc = Document(docx_path)
+    story = []
+    list_buffer = []
+    last_list_type = None
 
     def flush_list():
-        nonlocal list_buffer, last_list_style
+        nonlocal list_buffer, last_list_type
         if list_buffer:
-            story.append(ListFlowable(list_buffer, bulletType='bullet', leftIndent=18))
-            list_buffer, last_list_style = [], None
-
-    book_title = extract_book_title(docx_path)
+            story.append(ListFlowable(list_buffer, bulletType=last_list_type or 'bullet', leftIndent=18))
+            list_buffer = []
+            last_list_type = None
 
     for block in iter_block_items(doc):
         if isinstance(block, DocxParagraph):
-            para, text = block, ""
-            for run in para.runs:
-                t = run.text.replace('\n', ' ')
-                if not t:
-                    continue
-                if run.bold:
-                    t = f"<b>{t}</b>"
-                if run.italic:
-                    t = f"<i>{t}</i>"
-                if run.underline:
-                    t = f"<u>{t}</u>"
-                text += t
-            style = para.style.name if hasattr(para.style, 'name') else ""
-            if not used_title and text.strip() == book_title:
-                used_title = True
+            style = block.style.name
+
+            # Detect heading level
+            heading_level = get_heading_level(block)
+            if heading_level:
+                flush_list()
+                style_name = f"BookHeading{heading_level}"
+                heading_style = styles.get(style_name, styles.get("BookHeading1"))
+                story += [Spacer(1, 14), Paragraph(extract_rich_text(block), heading_style), Spacer(1, 10)]
                 continue
-            # You may comment this block to skip drop caps completely if you wish:
-            # if "Drop Cap" in style:
-            #     flush_list()
-            #     if text.strip():
-            #         first_letter, rest_text = text[0], text[1:]
-            #         story.append(DropCapParagraph(first_letter, rest_text, styles["BookBody"], dropcap_size=body_font_size*2))
-            #         story.append(Spacer(1, 6))
-            #     continue
-            if style.startswith('Heading'):
-                flush_list()
-                story += [Spacer(1, 14), Paragraph(text, styles["BookHeading"]), Spacer(1, 10)]
-            elif is_bullet_paragraph(para):
-                if last_list_style and style != last_list_style:
+
+            # Bullet/numbered lists
+            if is_bullet_paragraph(block):
+                list_type = 'bullet'
+                # Try to detect numbers for ordered lists
+                if block.text.strip() and re.match(r'^\d+[\.\)]', block.text.strip()):
+                    list_type = '1'  # ReportLab uses '1' for numbered
+                if last_list_type != list_type and list_buffer:
                     flush_list()
-                list_buffer.append(ListItem(Paragraph(text, styles["BookBody"])))
-                last_list_style = style
-            elif not text.strip():
+                last_list_type = list_type
+                item = ListItem(Paragraph(extract_rich_text(block), styles["BookBody"]))
+                list_buffer.append(item)
+                continue
+
+            # Blank lines
+            if not block.text.strip():
                 flush_list()
-                story.append(Spacer(1, 8))
-            else:
-                flush_list()
-                story.append(Paragraph(text, styles["BookBody"]))
+                story.append(Spacer(1, 12))
+                continue
+
+            # Regular paragraph
+            flush_list()
+            story.append(Paragraph(extract_rich_text(block), styles["BookBody"]))
+
         elif isinstance(block, DocxTable):
             flush_list()
-            data = [[cell.text for cell in row.cells] for row in block.rows]
-            t = RLTable(data, hAlign='LEFT', style=TableStyle([
-                ('FONTNAME', (0,0), (-1,-1), body_font),
-                ('FONTSIZE', (0,0), (-1,-1), body_font_size),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-            ]))
-            story += [Spacer(1, 8), t, Spacer(1, 8)]
+            rl_table = RLTable([[cell.text for cell in row.cells] for row in block.rows])
+            story.append(Spacer(1, 16))
+            story.append(rl_table)
+            story.append(Spacer(1, 12))
+
     flush_list()
     return story
+
+def extract_rich_text(paragraph):
+    """
+    Preserves bold, italic, and underline using ReportLab's <b>, <i>, <u> markup.
+    """
+    rich_text = ""
+    for run in paragraph.runs:
+        run_text = run.text.replace('\n', ' ')
+        if not run_text:
+            continue
+        if run.bold:
+            run_text = f"<b>{run_text}</b>"
+        if run.italic:
+            run_text = f"<i>{run_text}</i>"
+        if run.underline:
+            run_text = f"<u>{run_text}</u>"
+        rich_text += run_text
+    return rich_text or paragraph.text
+
+def iter_block_items(parent):
+    """
+    Yield each paragraph and table child within parent, in document order.
+    """
+    for child in parent.element.body.iterchildren():
+        if child.tag.endswith('}p'):
+            yield DocxParagraph(child, parent)
+        elif child.tag.endswith('}tbl'):
+            yield DocxTable(child, parent)

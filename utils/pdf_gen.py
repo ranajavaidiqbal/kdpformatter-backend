@@ -1,10 +1,9 @@
 from reportlab.platypus import SimpleDocTemplate, Spacer, PageBreak, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.pagesizes import inch
-from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.lib.styles import getSampleStyleSheet
 from .docx_parse import parse_docx_to_story, extract_book_title
-
 
 def generate_pdf(
     output_path: str,
@@ -33,6 +32,8 @@ def generate_pdf(
     inner_margin = outer_margin + (gutter * inch)
 
     styles = getSampleStyleSheet()
+
+    # Body style
     styles.add(ParagraphStyle(
         name="BookBody",
         fontName=body_font,
@@ -42,13 +43,31 @@ def generate_pdf(
         firstLineIndent=body_size * 1.3,
         spaceAfter=body_size * 0.7,
     ))
+
+    # Heading styles (multi-level)
     styles.add(ParagraphStyle(
-        name="BookHeading",
+        name="BookHeading1",
         fontName=heading_font,
         fontSize=heading_size,
         alignment=TA_CENTER,
         spaceAfter=body_size * 1.2,
         leading=heading_size * 1.15,
+    ))
+    styles.add(ParagraphStyle(
+        name="BookHeading2",
+        fontName=heading_font,
+        fontSize=heading_size * 0.8,
+        alignment=TA_LEFT,
+        spaceAfter=body_size,
+        leading=heading_size * 0.9,
+    ))
+    styles.add(ParagraphStyle(
+        name="BookHeading3",
+        fontName=heading_font,
+        fontSize=heading_size * 0.65,
+        alignment=TA_LEFT,
+        spaceAfter=body_size * 0.5,
+        leading=heading_size * 0.7,
     ))
 
     doc = SimpleDocTemplate(
@@ -63,7 +82,7 @@ def generate_pdf(
     book_title = extract_book_title(manuscript_file_path)
     story = []
     story.append(Spacer(1, height // 5))
-    story.append(Paragraph(book_title, styles["BookHeading"]))
+    story.append(Paragraph(book_title, styles["BookHeading1"]))
     story.append(PageBreak())
 
     story += parse_docx_to_story(
