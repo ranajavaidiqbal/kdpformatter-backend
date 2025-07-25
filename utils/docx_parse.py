@@ -113,3 +113,18 @@ def iter_block_items(parent):
             yield DocxParagraph(child, parent)
         elif child.tag.endswith('}tbl'):
             yield DocxTable(child, parent)
+
+# ---- ADD THIS FUNCTION BELOW ----
+
+def extract_book_title(docx_path):
+    doc = Document(docx_path)
+    # Prefer Heading 1 or Title styles
+    for para in doc.paragraphs:
+        if para.style.name.lower() in ("title", "heading 1", "heading1"):
+            if para.text.strip():
+                return para.text.strip()
+    # Fallback: first non-empty paragraph
+    for para in doc.paragraphs:
+        if para.text.strip():
+            return para.text.strip()
+    return "Your Book Title"
