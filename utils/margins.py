@@ -11,30 +11,38 @@ def calculate_kdp_margins(trim_size: str, page_count: int, bleed: bool, is_color
     Returns:
         dict: {'top': float, 'bottom': float, 'left': float, 'right': float, 'gutter': float}
     """
-    # KDP margin/gutter values: https://kdp.amazon.com/en_US/help/topic/G200735480
+    # KDP minimums and recommended defaults (as of 2024)
     size_defaults = {
         '6x9':  {'top': 0.75, 'bottom': 0.75, 'left': 0.75, 'right': 0.75},
         '5x8':  {'top': 0.75, 'bottom': 0.75, 'left': 0.625, 'right': 0.625},
-        # Add more sizes as needed!
+        '8.5x11': {'top': 1.0, 'bottom': 1.0, 'left': 1.0, 'right': 1.0},
+        # Add more as needed
     }
     base = size_defaults.get(trim_size, size_defaults['6x9']).copy()
 
-    # Gutter calculation (KDP recommendations, update as needed)
-    if page_count < 151:
-        gutter = 0.25
-    elif page_count < 401:
+    # KDP gutter (inside margin) rules (updated)
+    if page_count <= 150:
         gutter = 0.375
-    elif page_count < 601:
+    elif page_count <= 300:
         gutter = 0.5
-    else:
+    elif page_count <= 500:
         gutter = 0.625
+    elif page_count <= 700:
+        gutter = 0.75
+    else:
+        gutter = 0.875  # For up to 828 pages (KDP max for most sizes)
 
-    # Bleed adjustment (add 0.125" per KDP for bleed books)
+    # Bleed adjustment: add 0.125" to all outer margins if bleed is on
     if bleed:
-        base['top'] += 0.125
-        base['bottom'] += 0.125
-        base['left'] += 0.125
-        base['right'] += 0.125
+        for side in ['top', 'bottom', 'left', 'right']:
+            base[side] += 0.125
 
     base['gutter'] = gutter
     return base
+
+def get_margin_tuple(trim_size: str, page_count: int, bleed: bool) -> tuple:
+    """
+    Returns (left, right, top, bottom, gutter) in inches, for direct use in PDF generation.
+    """
+    m = calculate_kdp_margins(trim_size, page_count, bleed)
+    return m['left'], m['right'], m['top'], m['bottom'], m['gutter']

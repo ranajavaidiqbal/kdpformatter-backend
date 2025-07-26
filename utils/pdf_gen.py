@@ -2,6 +2,27 @@ from reportlab.platypus import SimpleDocTemplate, PageBreak
 from reportlab.lib.pagesizes import inch
 from utils.docx_parse import parse_docx_to_story
 from utils.styles import get_styles
+from utils.margins import get_margin_tuple
+
+def estimate_page_count(story, trim_size):
+    """
+    Rough estimate: 1 page per 700 words for 6x9; tweak as needed.
+    For more accuracy, you can build the PDF once in memory.
+    """
+    # This is a guess; for high confidence, build PDF in memory with ReportLab and count pages.
+    words = 0
+    for f in story:
+        if hasattr(f, 'text'):
+            words += len(f.text.split())
+    # You can calibrate this with real books!
+    if trim_size == '6x9':
+        words_per_page = 350  # typical paperback
+    elif trim_size == '8.5x11':
+        words_per_page = 600
+    else:
+        words_per_page = 350
+    pages = max(1, int(words / words_per_page) + 1)
+    return pages
 
 def generate_pdf(
     output_path,
@@ -11,8 +32,7 @@ def generate_pdf(
     heading_size,
     body_size,
     trim_size,
-    bleed,
-    gutter=0.25
+    bleed
 ):
     # Set up page size
     width, height = {
@@ -36,14 +56,20 @@ def generate_pdf(
         styles
     )
 
-    # Generate PDF
+    # --- Estimate page count for gutter calculation ---
+    page_count = estimate_page_count(story, trim_size)
+
+    # --- Get KDP margins based on estimated page count ---
+    left_margin, right_margin, top_margin, bottom_margin, gutter = get_margin_tuple(trim_size, page_count, bleed)
+
+    # --- Build PDF with those margins ---
     doc = SimpleDocTemplate(
         output_path,
         pagesize=(width, height),
-        leftMargin=0.75 * inch + (gutter * inch if not bleed else 0),
-        rightMargin=0.75 * inch,
-        topMargin=1 * inch,
-        bottomMargin=1 * inch,
+        leftMargin=left_margin * inch,
+        rightMargin=right_margin * inch,
+        topMargin=top_margin * inch,
+        bottomMargin=bottom_margin * inch,
         title="KDP Formatted Book",
         author=""
     )
