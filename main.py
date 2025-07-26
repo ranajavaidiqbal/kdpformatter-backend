@@ -68,8 +68,8 @@ async def format_book(
             heading_size=heading_size,
             body_size=body_size,
             trim_size=trim_size,
-            bleed=bleed,
-            gutter=0.25  # default for now
+            bleed=bleed
+            
         )
 
         # Upload PDF to Supabase and get URL
