@@ -1,8 +1,9 @@
 import os
 from docx import Document
-from reportlab.platypus import Paragraph, Spacer, Table as RLTable, TableStyle
+from reportlab.platypus import Paragraph, Spacer
 from reportlab.lib.styles import ParagraphStyle
 from .bullets import parse_bullet_lists
+from .tables import parse_tables  # << NEW IMPORT
 
 def parse_docx_to_story(docx_path, styles):
     """
@@ -79,23 +80,8 @@ def parse_docx_to_story(docx_path, styles):
         story.append(Spacer(1, 6))
         i += 1
 
-    # Table handling (place all tables after paragraphs for now)
-    for table in doc.tables:
-        data = []
-        for row in table.rows:
-            data.append([cell.text.strip() for cell in row.cells])
-        rl_table = RLTable(data)
-        rl_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), '#CCCCCC'),
-            ('TEXTCOLOR', (0, 0), (-1, 0), '#000000'),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('GRID', (0, 0), (-1, -1), 1, '#000000'),
-        ]))
-        story.append(Spacer(1, 12))
-        story.append(rl_table)
-        story.append(Spacer(1, 12))
+    # Table handling (now modularized)
+    story.extend(parse_tables(doc, styles))
 
     return story, headings
 
