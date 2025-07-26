@@ -76,3 +76,14 @@ def parse_docx_to_story(docx_path, styles):
         story.append(Spacer(1, 12))
 
     return story
+
+
+def extract_book_title(docx_path):
+    """Returns the first non-empty paragraph, or 'Untitled Book'."""
+    from docx import Document
+    doc = Document(docx_path)
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if text:
+            return text
+    return "Untitled Book"
