@@ -1,10 +1,9 @@
 import os
 from docx import Document
 from reportlab.platypus import Paragraph, Spacer
-from reportlab.lib.styles import ParagraphStyle
 from .bullets import parse_bullet_lists
 from .tables import parse_tables
-from .images import parse_images  # NEW IMPORT
+from .images import parse_images
 
 def parse_docx_to_story(docx_path, styles):
     """
@@ -44,7 +43,7 @@ def parse_docx_to_story(docx_path, styles):
 
         # Title detection (first non-empty para, before any heading)
         if not title_found and para_style.startswith('title'):
-            story.append(Paragraph(text, styles['BookHeading']))
+            story.append(Paragraph(text, styles['heading']))
             story.append(Spacer(1, 18))
             title_found = True
             i += 1
@@ -59,7 +58,7 @@ def parse_docx_to_story(docx_path, styles):
             except Exception:
                 level = 1
             headings.append((text, level))
-            story.append(Paragraph(text, styles['BookHeading']))
+            story.append(Paragraph(text, styles['heading']))
             story.append(Spacer(1, 12))
         else:
             # Inline formatting (bold/italic) support
@@ -77,7 +76,7 @@ def parse_docx_to_story(docx_path, styles):
                 else:
                     run_fragments.append(run_text)
             paragraph_text = ''.join(run_fragments)
-            story.append(Paragraph(paragraph_text, styles['BookBody']))
+            story.append(Paragraph(paragraph_text, styles['body']))
         story.append(Spacer(1, 6))
         i += 1
 
