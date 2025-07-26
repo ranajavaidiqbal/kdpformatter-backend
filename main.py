@@ -8,11 +8,6 @@ import uuid
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from utils import (
-    register_fonts,
-    generate_pdf,
-    upload_pdf_to_supabase
-)
 
 app = FastAPI()
 
@@ -42,7 +37,13 @@ async def format_book(
     heading_size: float = Form(18.0),
     body_size: float = Form(12.0),
     trim_size: str = Form("6x9"),
-    bleed: bool = Form(False)
+    bleed: bool = Form(False),
+    generate_toc: bool = Form(False),
+    book_title: str = Form(""),
+    book_subtitle: str = Form(""),
+    author_name: str = Form(""),
+    dedication: str = Form(""),
+    copyright_notice: str = Form("")
 ):
     try:
         # Save uploaded file to a temp location
@@ -59,7 +60,7 @@ async def format_book(
         pdf_filename = f"{uuid.uuid4()}.pdf"
         pdf_path = os.path.join(temp_dir, pdf_filename)
 
-        # Generate PDF with formatted content
+        # Generate PDF with formatted content and new front matter
         generate_pdf(
             output_path=pdf_path,
             manuscript_file_path=docx_path,
@@ -68,8 +69,13 @@ async def format_book(
             heading_size=heading_size,
             body_size=body_size,
             trim_size=trim_size,
-            bleed=bleed
-            
+            bleed=bleed,
+            generate_toc=generate_toc,
+            book_title=book_title,
+            book_subtitle=book_subtitle,
+            author_name=author_name,
+            dedication=dedication,
+            copyright_notice=copyright_notice
         )
 
         # Upload PDF to Supabase and get URL
