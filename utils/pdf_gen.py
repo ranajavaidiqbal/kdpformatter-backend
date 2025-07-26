@@ -6,6 +6,7 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from .fonts import register_fonts
 from .margins import calculate_kdp_margins
 from .page_numbers import add_page_numbers
+from .docx_parse import parse_docx_to_story
 
 def generate_pdf(
     output_path,
@@ -17,7 +18,7 @@ def generate_pdf(
     trim_size,
     bleed,
     gutter,
-    page_count=None  # <-- allow page count to be passed in!
+    page_count=None
 ):
     # Register fonts (if not already done at startup)
     register_fonts()
@@ -68,8 +69,7 @@ def generate_pdf(
                               alignment=TA_JUSTIFY,
                               spaceAfter=12))
 
-    # Import docx parsing and generate content
-    from .docx_parse import parse_docx_to_story
+    # Use the new docx_parse module to create story
     story = parse_docx_to_story(manuscript_file_path, styles=styles)
 
     doc.build(
