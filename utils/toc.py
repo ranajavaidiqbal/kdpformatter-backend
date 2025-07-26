@@ -13,12 +13,12 @@ def build_static_toc(headings, styles):
     """
     flowables = []
     flowables.append(PageBreak())
-    flowables.append(Paragraph("Table of Contents", styles['BookHeading']))
+    flowables.append(Paragraph("Table of Contents", styles['heading']))
     flowables.append(Spacer(1, 18))
     for text, level in headings:
         indent = 12 * (level - 1)  # indent sub-levels
         flowables.append(
-            Paragraph(f'<para leftIndent={indent}>{text}</para>', styles['BookBody'])
+            Paragraph(f'<para leftIndent={indent}>{text}</para>', styles['body'])
         )
         flowables.append(Spacer(1, 6))
     flowables.append(PageBreak())

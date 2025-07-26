@@ -44,7 +44,7 @@ def make_list_flowable(list_items, styles, ordered=False):
             if level == current_level:
                 result.append(
                     ListItem(
-                        Paragraph(para.text, styles['BookBody']),
+                        Paragraph(para.text, styles['body']),
                         leftIndent=12*(level-1)
                     )
                 )
@@ -76,5 +76,5 @@ def parse_bullet_lists(docx_paragraphs, styles):
             flowables.append(make_list_flowable(data, styles, ordered=is_ordered))
         else:  # "para"
             para = data
-            flowables.append(Paragraph(para.text, styles['BookBody']))
+            flowables.append(Paragraph(para.text, styles['body']))
     return flowables
