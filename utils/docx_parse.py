@@ -1,6 +1,6 @@
 import os
 from docx import Document
-from reportlab.platypus import Paragraph, Spacer, Table as RLTable, TableStyle, PageBreak
+from reportlab.platypus import Paragraph, Spacer, Table as RLTable, TableStyle
 from reportlab.lib.styles import ParagraphStyle
 from .bullets import parse_bullet_lists
 
@@ -40,8 +40,10 @@ def parse_docx_to_story(docx_path, styles):
             title_found = True
             continue
 
-        # Heading detection
-        if para.style.name.startswith('heading'):
+        # Heading detection (for TOC)
+        if para.style.name.startswith('Heading') and not (
+            "list" in para_style or "bullet" in para_style or "number" in para_style
+        ):
             try:
                 level = int(para.style.name.replace('Heading', '').strip() or "1")
             except Exception:
