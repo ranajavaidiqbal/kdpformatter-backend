@@ -3,20 +3,18 @@ from reportlab.lib.pagesizes import inch
 from utils.docx_parse import parse_docx_to_story
 from utils.styles import get_styles
 from utils.margins import get_margin_tuple
+from utils.toc import build_static_toc  # Make sure this import works!
 
 def estimate_page_count(story, trim_size):
     """
-    Rough estimate: 1 page per 700 words for 6x9; tweak as needed.
-    For more accuracy, you can build the PDF once in memory.
+    Estimate the number of pages for margin/gutter calculation.
     """
-    # This is a guess; for high confidence, build PDF in memory with ReportLab and count pages.
     words = 0
     for f in story:
         if hasattr(f, 'text'):
             words += len(f.text.split())
-    # You can calibrate this with real books!
     if trim_size == '6x9':
-        words_per_page = 350  # typical paperback
+        words_per_page = 350
     elif trim_size == '8.5x11':
         words_per_page = 600
     else:
@@ -32,8 +30,12 @@ def generate_pdf(
     heading_size,
     body_size,
     trim_size,
-    bleed
+    bleed,
+    generate_toc=False  # <-- new param, set by frontend
 ):
+    """
+    Generate a KDP-ready PDF with conditional Table of Contents.
+    """
     # Set up page size
     width, height = {
         "6x9": (6 * inch, 9 * inch),
@@ -56,13 +58,16 @@ def generate_pdf(
         styles
     )
 
-    # --- Estimate page count for gutter calculation ---
+    # Estimate page count for gutter calculation
     page_count = estimate_page_count(story, trim_size)
-
-    # --- Get KDP margins based on estimated page count ---
     left_margin, right_margin, top_margin, bottom_margin, gutter = get_margin_tuple(trim_size, page_count, bleed)
 
-    # --- Build PDF with those margins ---
+    # --- Conditional Table of Contents ---
+    if generate_toc and headings and hasattr(headings, "__iter__"):
+        toc = build_static_toc(headings, styles)
+        story = toc + story  # Prepend TOC to the story
+
+    # --- Build the PDF ---
     doc = SimpleDocTemplate(
         output_path,
         pagesize=(width, height),
