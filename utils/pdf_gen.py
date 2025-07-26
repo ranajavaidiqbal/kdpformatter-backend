@@ -7,6 +7,7 @@ from .fonts import register_fonts
 from .margins import calculate_kdp_margins
 from .page_numbers import add_page_numbers
 from .docx_parse import parse_docx_to_story
+from .toc import build_static_toc
 
 def generate_pdf(
     output_path,
@@ -69,11 +70,17 @@ def generate_pdf(
                               alignment=TA_JUSTIFY,
                               spaceAfter=12))
 
-    # Use the new docx_parse module to create story
-    story = parse_docx_to_story(manuscript_file_path, styles=styles)
+    # Parse the docx to get story and headings for TOC
+    story, headings = parse_docx_to_story(manuscript_file_path, styles=styles)
+
+    # Generate TOC flowables
+    toc_flowables = build_static_toc(headings, styles)
+
+    # Assemble full story: [TOC, rest of book]
+    full_story = toc_flowables + story
 
     doc.build(
-        story,
+        full_story,
         onFirstPage=lambda canvas_obj, doc_obj: add_page_numbers(canvas_obj, doc_obj, skip_first_n=1),
         onLaterPages=lambda canvas_obj, doc_obj: add_page_numbers(canvas_obj, doc_obj, skip_first_n=1)
     )

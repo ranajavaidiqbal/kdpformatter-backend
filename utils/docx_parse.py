@@ -1,21 +1,18 @@
-# utils/docx_parse.py
-
 import os
 from docx import Document
-from reportlab.platypus import Paragraph, Spacer, Table as RLTable, TableStyle
+from reportlab.platypus import Paragraph, Spacer, Table as RLTable, TableStyle, PageBreak
 from reportlab.lib.styles import ParagraphStyle
 
 def parse_docx_to_story(docx_path, styles):
     """
-    Parses a DOCX file and returns a list of ReportLab Flowables.
-    Args:
-        docx_path: Path to the DOCX file.
-        styles: A dict or stylesheet containing ReportLab styles (BookHeading, BookBody, etc.)
-    Returns:
-        List of Flowables (Paragraphs, Tables, etc.)
+    Parses a DOCX file and returns a tuple:
+      (story, headings)
+    - story: List of ReportLab Flowables (Paragraphs, Tables, etc.)
+    - headings: List of (heading_text, heading_level)
     """
     doc = Document(docx_path)
     story = []
+    headings = []
     title_found = False
 
     for para in doc.paragraphs:
@@ -32,6 +29,12 @@ def parse_docx_to_story(docx_path, styles):
 
         # Heading detection
         if para.style.name.startswith('Heading'):
+            # Extract heading level from style name, e.g., Heading1, Heading2
+            try:
+                level = int(para.style.name.replace('Heading', '').strip() or "1")
+            except Exception:
+                level = 1
+            headings.append((text, level))
             story.append(Paragraph(text, styles['BookHeading']))
             story.append(Spacer(1, 12))
         # Bullet or numbered list
@@ -75,12 +78,10 @@ def parse_docx_to_story(docx_path, styles):
         story.append(rl_table)
         story.append(Spacer(1, 12))
 
-    return story
-
+    return story, headings
 
 def extract_book_title(docx_path):
     """Returns the first non-empty paragraph, or 'Untitled Book'."""
-    from docx import Document
     doc = Document(docx_path)
     for p in doc.paragraphs:
         text = p.text.strip()
