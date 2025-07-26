@@ -23,22 +23,25 @@ def parse_docx_to_story(docx_path, styles):
     bullet_flowables = parse_bullet_lists(all_paragraphs, styles)
     story.extend(bullet_flowables)
 
-    # Now process paragraphs for title, headings, normal paragraphs
     for para in doc.paragraphs:
         text = para.text.strip()
         if not text:
             continue
 
+        # Skip paragraphs that are part of a list (already handled by bullets.py)
+        para_style = para.style.name.lower()
+        if "list" in para_style or "bullet" in para_style or "number" in para_style:
+            continue
+
         # Title detection (first non-empty para, before any heading)
-        if not title_found and para.style.name.lower().startswith('title'):
+        if not title_found and para_style.startswith('title'):
             story.append(Paragraph(text, styles['BookHeading']))
             story.append(Spacer(1, 18))
             title_found = True
             continue
 
         # Heading detection
-        if para.style.name.startswith('Heading'):
-            # Extract heading level from style name, e.g., Heading1, Heading2
+        if para.style.name.startswith('heading'):
             try:
                 level = int(para.style.name.replace('Heading', '').strip() or "1")
             except Exception:
@@ -46,9 +49,6 @@ def parse_docx_to_story(docx_path, styles):
             headings.append((text, level))
             story.append(Paragraph(text, styles['BookHeading']))
             story.append(Spacer(1, 12))
-        # Already handled by bullets.py: skip any paragraph that's a list
-        elif "list" in para.style.name.lower() or "bullet" in para.style.name.lower() or "number" in para.style.name.lower():
-            continue
         # Body text (default)
         else:
             # Inline formatting (bold/italic) support
