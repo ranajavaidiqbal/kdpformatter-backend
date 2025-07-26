@@ -1,12 +1,11 @@
-from reportlab.platypus import SimpleDocTemplate, PageBreak, Paragraph
+from reportlab.platypus import SimpleDocTemplate, PageBreak
 from reportlab.lib.pagesizes import inch
-from reportlab.lib.styles import ParagraphStyle
 from utils.docx_parse import parse_docx_to_story
 from utils.styles import get_styles
 from utils.margins import get_margin_tuple
-from utils.toc import build_static_toc  # Make sure this import works!
+from utils.toc import build_static_toc
+from utils.frontmatter import build_front_matter  # <--- new import!
 
-# Trim size mapping, covering all options in your frontend
 TRIM_SIZE_MAP = {
     "6x9": (6 * inch, 9 * inch),
     "5x8": (5 * inch, 8 * inch),
@@ -31,24 +30,16 @@ TRIM_SIZE_MAP = {
 }
 
 def clean_trim_size(ts):
-    """
-    Cleans frontend trim size values to match the keys in TRIM_SIZE_MAP.
-    """
     ts = ts.replace('"', '').replace("in", '').replace("(", '').replace(")", '')
     ts = ts.replace(' - Most Common', '').replace('Paperback & Hardcover', '')
     ts = ts.replace(' ', '').strip()
-    # Convert from 6x 9 or 6 x9 or 6 x 9 to 6x9
     ts = ts.replace('x ', 'x').replace(' x', 'x').replace('x', 'x')
-    # Remove cm part if present
     if 'cm' in ts:
         ts = ts.split('cm')[0]
         ts = ts.strip().replace('.', '')
     return ts
 
 def estimate_page_count(story, trim_size):
-    """
-    Estimate the number of pages for margin/gutter calculation.
-    """
     words = 0
     for f in story:
         if hasattr(f, 'text'):
@@ -62,27 +53,6 @@ def estimate_page_count(story, trim_size):
     pages = max(1, int(words / words_per_page) + 1)
     return pages
 
-def extract_title(headings, story):
-    """
-    Extracts the title from the first heading or first large paragraph.
-    """
-    if headings and isinstance(headings, list) and len(headings) > 0 and 'text' in headings[0]:
-        return headings[0]['text']
-    for f in story:
-        if hasattr(f, 'text') and len(f.text.strip()) > 5:
-            return f.text.strip()
-    return "Untitled Manuscript"
-
-def get_title_style(heading_font):
-    return ParagraphStyle(
-        "TitleStyle",
-        fontName=heading_font,
-        fontSize=44,   # Large, fixed size for book title
-        alignment=1,   # Centered
-        spaceAfter=40,
-        spaceBefore=180,
-    )
-
 def generate_pdf(
     output_path,
     manuscript_file_path,
@@ -93,11 +63,13 @@ def generate_pdf(
     trim_size,
     bleed,
     generate_toc=False,
+    book_title="",            # New: from frontend
+    book_subtitle="",         # New: from frontend
+    author_name="",           # New: from frontend
+    dedication="",            # New: from frontend
+    copyright_notice="",      # New: from frontend
     **kwargs
 ):
-    """
-    Generate a KDP-ready PDF with front title page and optional Table of Contents.
-    """
     # --- TRIM SIZE LOGIC ---
     key = clean_trim_size(trim_size)
     width, height = TRIM_SIZE_MAP.get(key, (6 * inch, 9 * inch))
@@ -110,16 +82,22 @@ def generate_pdf(
         body_size=body_size
     )
 
+    # --- Build front matter pages using new module ---
+    front_matter_pages = build_front_matter(
+        title=book_title,
+        subtitle=book_subtitle,
+        author=author_name,
+        dedication=dedication,
+        copyright_text=copyright_notice,
+        heading_font=heading_font,
+        body_font=body_font
+    )
+
     # Parse manuscript
     story, headings = parse_docx_to_story(
         manuscript_file_path,
         styles
     )
-
-    # --- Insert Title Page ---
-    book_title = extract_title(headings, story)
-    title_style = get_title_style(heading_font)
-    front_page = [Paragraph(book_title, title_style), PageBreak()]
 
     # Estimate page count for gutter calculation
     page_count = estimate_page_count(story, key)
@@ -130,7 +108,6 @@ def generate_pdf(
         toc = build_static_toc(headings, styles)
         story = toc + story
 
-    # --- Build the PDF ---
     doc = SimpleDocTemplate(
         output_path,
         pagesize=(width, height),
@@ -139,8 +116,8 @@ def generate_pdf(
         topMargin=top_margin * inch,
         bottomMargin=bottom_margin * inch,
         title="KDP Formatted Book",
-        author=""
+        author=author_name or ""
     )
 
-    full_story = front_page + story
+    full_story = front_matter_pages + story
     doc.build(full_story)
