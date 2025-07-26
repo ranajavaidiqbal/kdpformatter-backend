@@ -7,8 +7,7 @@ from .images import parse_images
 
 def parse_docx_to_story(docx_path, styles):
     """
-    Parses a DOCX file and returns a tuple:
-      (story, headings)
+    Parses a DOCX file and returns (story, headings).
     - story: List of ReportLab Flowables (Paragraphs, Tables, Images, etc.)
     - headings: List of (heading_text, heading_level)
     """
@@ -38,19 +37,18 @@ def parse_docx_to_story(docx_path, styles):
                     i += 1
                 else:
                     break
-            story.extend(parse_bullet_lists(list_block, styles))
-            continue
-
+            flowables = parse_bullet_lists(list_block, styles)
+            # Defensive: ensure it's always a list of Flowables
+            if isinstance(flowables, list):
+                story.extend([f for f in flowables if hasattr(f, 'wrap')])
+            i -= 1  # adjust for outer loop increment
         # Book title (first "Title" style paragraph)
-        if not title_found and para_style_name.startswith('title'):
+        elif not title_found and para_style_name.startswith('title'):
             story.append(Paragraph(text, styles['heading']))
             story.append(Spacer(1, 18))
             title_found = True
-            i += 1
-            continue
-
         # Heading (for TOC)
-        if para.style.name.startswith('Heading') and not (
+        elif para.style.name.startswith('Heading') and not (
             "list" in para_style_name or "bullet" in para_style_name or "number" in para_style_name
         ):
             try:
@@ -80,11 +78,14 @@ def parse_docx_to_story(docx_path, styles):
         story.append(Spacer(1, 6))
         i += 1
 
-    # Add tables
-    story.extend(parse_tables(doc, styles))
+    # Add tables and images, but always check type
+    tables = parse_tables(doc, styles)
+    if isinstance(tables, list):
+        story.extend([t for t in tables if hasattr(t, 'wrap')])
 
-    # Add images
-    story.extend(parse_images(doc, styles))
+    images = parse_images(doc, styles)
+    if isinstance(images, list):
+        story.extend([img for img in images if hasattr(img, 'wrap')])
 
     return story, headings
 
