@@ -5,6 +5,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from .fonts import register_fonts
 from .margins import calculate_kdp_margins
+from .page_numbers import add_page_numbers
 
 def generate_pdf(
     output_path,
@@ -23,9 +24,12 @@ def generate_pdf(
 
     # Estimate page count if not provided (very rough)
     if page_count is None:
-        with open(manuscript_file_path, 'rb') as f:
-            word_count = len(f.read().decode(errors="ignore").split())
-        page_count = max(1, word_count // 300)  # average 300 words/page
+        try:
+            with open(manuscript_file_path, 'rb') as f:
+                word_count = len(f.read().decode(errors="ignore").split())
+            page_count = max(1, word_count // 300)  # average 300 words/page
+        except Exception:
+            page_count = 1
 
     # Get margins/gutter for KDP
     margins = calculate_kdp_margins(trim_size, page_count, bleed)
@@ -64,14 +68,14 @@ def generate_pdf(
                               alignment=TA_JUSTIFY,
                               spaceAfter=12))
 
-    # Read manuscript and add basic content
-    story = []
-
-    # You should call your own docx_parse method here, which returns "parsed" paragraphs for headings, body, etc.
-    # For example:
+    # Import docx parsing and generate content
     from .docx_parse import parse_docx_to_story
-    story += parse_docx_to_story(manuscript_file_path, styles=styles)
+    story = parse_docx_to_story(manuscript_file_path, styles=styles)
 
-    doc.build(story)
+    doc.build(
+        story,
+        onFirstPage=lambda canvas_obj, doc_obj: add_page_numbers(canvas_obj, doc_obj, skip_first_n=1),
+        onLaterPages=lambda canvas_obj, doc_obj: add_page_numbers(canvas_obj, doc_obj, skip_first_n=1)
+    )
 
     return output_path
