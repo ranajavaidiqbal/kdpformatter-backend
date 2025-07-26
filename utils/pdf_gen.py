@@ -1,9 +1,49 @@
-from reportlab.platypus import SimpleDocTemplate, PageBreak
+from reportlab.platypus import SimpleDocTemplate, PageBreak, Paragraph
 from reportlab.lib.pagesizes import inch
+from reportlab.lib.styles import ParagraphStyle
 from utils.docx_parse import parse_docx_to_story
 from utils.styles import get_styles
 from utils.margins import get_margin_tuple
 from utils.toc import build_static_toc  # Make sure this import works!
+
+# Trim size mapping, covering all options in your frontend
+TRIM_SIZE_MAP = {
+    "6x9": (6 * inch, 9 * inch),
+    "5x8": (5 * inch, 8 * inch),
+    "5.06x7.81": (5.06 * inch, 7.81 * inch),
+    "5.25x8": (5.25 * inch, 8 * inch),
+    "5.5x8.5": (5.5 * inch, 8.5 * inch),
+    "6.14x9.21": (6.14 * inch, 9.21 * inch),
+    "6.69x9.61": (6.69 * inch, 9.61 * inch),
+    "7x10": (7 * inch, 10 * inch),
+    "7.44x9.69": (7.44 * inch, 9.69 * inch),
+    "7.5x9.25": (7.5 * inch, 9.25 * inch),
+    "8x10": (8 * inch, 10 * inch),
+    "8.25x6": (8.25 * inch, 6 * inch),
+    "8.25x8.25": (8.25 * inch, 8.25 * inch),
+    "8.5x8.5": (8.5 * inch, 8.5 * inch),
+    "8.5x11": (8.5 * inch, 11 * inch),
+    "5.5x8.5 - Hardcover": (5.5 * inch, 8.5 * inch),
+    "6x9 - Hardcover": (6 * inch, 9 * inch),
+    "6.14x9.21 - Hardcover": (6.14 * inch, 9.21 * inch),
+    "7x10 - Hardcover": (7 * inch, 10 * inch),
+    "8.25x10.5 - Hardcover": (8.25 * inch, 10.5 * inch),
+}
+
+def clean_trim_size(ts):
+    """
+    Cleans frontend trim size values to match the keys in TRIM_SIZE_MAP.
+    """
+    ts = ts.replace('"', '').replace("in", '').replace("(", '').replace(")", '')
+    ts = ts.replace(' - Most Common', '').replace('Paperback & Hardcover', '')
+    ts = ts.replace(' ', '').strip()
+    # Convert from 6x 9 or 6 x9 or 6 x 9 to 6x9
+    ts = ts.replace('x ', 'x').replace(' x', 'x').replace('x', 'x')
+    # Remove cm part if present
+    if 'cm' in ts:
+        ts = ts.split('cm')[0]
+        ts = ts.strip().replace('.', '')
+    return ts
 
 def estimate_page_count(story, trim_size):
     """
@@ -22,6 +62,27 @@ def estimate_page_count(story, trim_size):
     pages = max(1, int(words / words_per_page) + 1)
     return pages
 
+def extract_title(headings, story):
+    """
+    Extracts the title from the first heading or first large paragraph.
+    """
+    if headings and isinstance(headings, list) and len(headings) > 0 and 'text' in headings[0]:
+        return headings[0]['text']
+    for f in story:
+        if hasattr(f, 'text') and len(f.text.strip()) > 5:
+            return f.text.strip()
+    return "Untitled Manuscript"
+
+def get_title_style(heading_font):
+    return ParagraphStyle(
+        "TitleStyle",
+        fontName=heading_font,
+        fontSize=44,   # Large, fixed size for book title
+        alignment=1,   # Centered
+        spaceAfter=40,
+        spaceBefore=180,
+    )
+
 def generate_pdf(
     output_path,
     manuscript_file_path,
@@ -31,21 +92,17 @@ def generate_pdf(
     body_size,
     trim_size,
     bleed,
-    generate_toc=False,  # <-- new param, set by frontend
-    **kwargs             # <-- this will remove any extra parameters that are not defined here
+    generate_toc=False,
+    **kwargs
 ):
     """
-    Generate a KDP-ready PDF with conditional Table of Contents.
+    Generate a KDP-ready PDF with front title page and optional Table of Contents.
     """
-    # Set up page size
-    width, height = {
-        "6x9": (6 * inch, 9 * inch),
-        "5x8": (5 * inch, 8 * inch),
-        "8.5x11": (8.5 * inch, 11 * inch),
-        # Add more as needed
-    }.get(trim_size, (6 * inch, 9 * inch))
+    # --- TRIM SIZE LOGIC ---
+    key = clean_trim_size(trim_size)
+    width, height = TRIM_SIZE_MAP.get(key, (6 * inch, 9 * inch))
 
-    # Get styles from the central styles.py
+    # Get styles
     styles = get_styles(
         heading_font=heading_font,
         heading_size=heading_size,
@@ -59,14 +116,19 @@ def generate_pdf(
         styles
     )
 
+    # --- Insert Title Page ---
+    book_title = extract_title(headings, story)
+    title_style = get_title_style(heading_font)
+    front_page = [Paragraph(book_title, title_style), PageBreak()]
+
     # Estimate page count for gutter calculation
-    page_count = estimate_page_count(story, trim_size)
-    left_margin, right_margin, top_margin, bottom_margin, gutter = get_margin_tuple(trim_size, page_count, bleed)
+    page_count = estimate_page_count(story, key)
+    left_margin, right_margin, top_margin, bottom_margin, gutter = get_margin_tuple(key, page_count, bleed)
 
     # --- Conditional Table of Contents ---
     if generate_toc and headings and hasattr(headings, "__iter__"):
         toc = build_static_toc(headings, styles)
-        story = toc + story  # Prepend TOC to the story
+        story = toc + story
 
     # --- Build the PDF ---
     doc = SimpleDocTemplate(
@@ -80,4 +142,5 @@ def generate_pdf(
         author=""
     )
 
-    doc.build(story)
+    full_story = front_page + story
+    doc.build(full_story)
