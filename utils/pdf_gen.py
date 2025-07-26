@@ -68,7 +68,7 @@ def generate_pdf(
     author_name="",           # New: from frontend
     dedication="",            # New: from frontend
     copyright_notice="",      # New: from frontend
-    **kwargs
+
 ):
     # --- TRIM SIZE LOGIC ---
     key = clean_trim_size(trim_size)
