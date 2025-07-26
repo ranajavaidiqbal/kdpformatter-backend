@@ -3,13 +3,14 @@ from docx import Document
 from reportlab.platypus import Paragraph, Spacer
 from reportlab.lib.styles import ParagraphStyle
 from .bullets import parse_bullet_lists
-from .tables import parse_tables  # << NEW IMPORT
+from .tables import parse_tables
+from .images import parse_images  # NEW IMPORT
 
 def parse_docx_to_story(docx_path, styles):
     """
     Parses a DOCX file and returns a tuple:
       (story, headings)
-    - story: List of ReportLab Flowables (Paragraphs, Tables, etc.)
+    - story: List of ReportLab Flowables (Paragraphs, Tables, Images, etc.)
     - headings: List of (heading_text, heading_level)
     """
     doc = Document(docx_path)
@@ -82,6 +83,9 @@ def parse_docx_to_story(docx_path, styles):
 
     # Table handling (now modularized)
     story.extend(parse_tables(doc, styles))
+
+    # Image handling (now modularized)
+    story.extend(parse_images(doc, styles))
 
     return story, headings
 
