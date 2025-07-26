@@ -6,6 +6,12 @@ from .tables import parse_tables
 from .images import parse_images
 
 def parse_docx_to_story(docx_path, styles):
+    """
+    Parses a DOCX file and returns a tuple:
+      (story, headings)
+    - story: List of ReportLab Flowables (Paragraphs, Tables, Images, etc.)
+    - headings: List of (heading_text, heading_level)
+    """
     doc = Document(docx_path)
     story = []
     headings = []
@@ -21,7 +27,7 @@ def parse_docx_to_story(docx_path, styles):
 
         para_style_name = para.style.name.lower()
 
-        # Handle bullets/lists/numbered paragraphs
+        # Bullet/list/numbered
         if "list" in para_style_name or "bullet" in para_style_name or "number" in para_style_name:
             list_block = []
             while i < len(doc.paragraphs):
@@ -35,7 +41,7 @@ def parse_docx_to_story(docx_path, styles):
             story.extend(parse_bullet_lists(list_block, styles))
             continue
 
-        # Title detection (optional, first non-empty para before headings)
+        # Book title (first "Title" style paragraph)
         if not title_found and para_style_name.startswith('title'):
             story.append(Paragraph(text, styles['heading']))
             story.append(Spacer(1, 18))
@@ -43,7 +49,7 @@ def parse_docx_to_story(docx_path, styles):
             i += 1
             continue
 
-        # Heading detection (for TOC)
+        # Heading (for TOC)
         if para.style.name.startswith('Heading') and not (
             "list" in para_style_name or "bullet" in para_style_name or "number" in para_style_name
         ):
@@ -55,7 +61,7 @@ def parse_docx_to_story(docx_path, styles):
             story.append(Paragraph(text, styles['heading']))
             story.append(Spacer(1, 12))
         else:
-            # Inline formatting (bold/italic) support
+            # Inline formatting (bold/italic) support for body
             run_fragments = []
             for run in para.runs:
                 run_text = run.text.replace('\n', '')
@@ -74,15 +80,16 @@ def parse_docx_to_story(docx_path, styles):
         story.append(Spacer(1, 6))
         i += 1
 
-    # Table handling (modularized)
+    # Add tables
     story.extend(parse_tables(doc, styles))
 
-    # Image handling (modularized)
+    # Add images
     story.extend(parse_images(doc, styles))
 
     return story, headings
 
 def extract_book_title(docx_path):
+    """Returns the first non-empty paragraph, or 'Untitled Book'."""
     doc = Document(docx_path)
     for p in doc.paragraphs:
         text = p.text.strip()
