@@ -16,28 +16,36 @@ def parse_docx_to_story(docx_path, styles):
     headings = []
     title_found = False
 
-    # Gather all paragraphs (for list/bullet detection)
-    all_paragraphs = list(doc.paragraphs)
-
-    # Parse and add all bullet/numbered lists as flowables
-    bullet_flowables = parse_bullet_lists(all_paragraphs, styles)
-    story.extend(bullet_flowables)
-
-    for para in doc.paragraphs:
+    i = 0
+    while i < len(doc.paragraphs):
+        para = doc.paragraphs[i]
         text = para.text.strip()
         if not text:
+            i += 1
             continue
 
-        # Skip paragraphs that are part of a list (already handled by bullets.py)
         para_style = para.style.name.lower()
+
+        # Block of contiguous list/bullet/numbered paragraphs
         if "list" in para_style or "bullet" in para_style or "number" in para_style:
-            continue
+            list_block = []
+            while i < len(doc.paragraphs):
+                para2 = doc.paragraphs[i]
+                para2_style = para2.style.name.lower()
+                if "list" in para2_style or "bullet" in para2_style or "number" in para2_style:
+                    list_block.append(para2)
+                    i += 1
+                else:
+                    break
+            story.extend(parse_bullet_lists(list_block, styles))
+            continue  # already incremented i
 
         # Title detection (first non-empty para, before any heading)
         if not title_found and para_style.startswith('title'):
             story.append(Paragraph(text, styles['BookHeading']))
             story.append(Spacer(1, 18))
             title_found = True
+            i += 1
             continue
 
         # Heading detection (for TOC)
@@ -51,7 +59,6 @@ def parse_docx_to_story(docx_path, styles):
             headings.append((text, level))
             story.append(Paragraph(text, styles['BookHeading']))
             story.append(Spacer(1, 12))
-        # Body text (default)
         else:
             # Inline formatting (bold/italic) support
             run_fragments = []
@@ -70,6 +77,7 @@ def parse_docx_to_story(docx_path, styles):
             paragraph_text = ''.join(run_fragments)
             story.append(Paragraph(paragraph_text, styles['BookBody']))
         story.append(Spacer(1, 6))
+        i += 1
 
     # Table handling (place all tables after paragraphs for now)
     for table in doc.tables:
