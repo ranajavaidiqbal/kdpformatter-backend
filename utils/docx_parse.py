@@ -25,15 +25,15 @@ def parse_docx_to_story(docx_path, styles):
             i += 1
             continue
 
-        para_style = para.style.name.lower()
+        para_style_name = para.style.name.lower()
 
         # Block of contiguous list/bullet/numbered paragraphs
-        if "list" in para_style or "bullet" in para_style or "number" in para_style:
+        if "list" in para_style_name or "bullet" in para_style_name or "number" in para_style_name:
             list_block = []
             while i < len(doc.paragraphs):
                 para2 = doc.paragraphs[i]
-                para2_style = para2.style.name.lower()
-                if "list" in para2_style or "bullet" in para2_style or "number" in para2_style:
+                para2_style_name = para2.style.name.lower()
+                if "list" in para2_style_name or "bullet" in para2_style_name or "number" in para2_style_name:
                     list_block.append(para2)
                     i += 1
                 else:
@@ -42,7 +42,7 @@ def parse_docx_to_story(docx_path, styles):
             continue  # already incremented i
 
         # Title detection (first non-empty para, before any heading)
-        if not title_found and para_style.startswith('title'):
+        if not title_found and para_style_name.startswith('title'):
             story.append(Paragraph(text, styles['heading']))
             story.append(Spacer(1, 18))
             title_found = True
@@ -51,7 +51,7 @@ def parse_docx_to_story(docx_path, styles):
 
         # Heading detection (for TOC)
         if para.style.name.startswith('Heading') and not (
-            "list" in para_style or "bullet" in para_style or "number" in para_style
+            "list" in para_style_name or "bullet" in para_style_name or "number" in para_style_name
         ):
             try:
                 level = int(para.style.name.replace('Heading', '').strip() or "1")
