@@ -2,6 +2,7 @@ import os
 from docx import Document
 from reportlab.platypus import Paragraph, Spacer, Table as RLTable, TableStyle, PageBreak
 from reportlab.lib.styles import ParagraphStyle
+from .bullets import parse_bullet_lists
 
 def parse_docx_to_story(docx_path, styles):
     """
@@ -15,6 +16,14 @@ def parse_docx_to_story(docx_path, styles):
     headings = []
     title_found = False
 
+    # Gather all paragraphs (for list/bullet detection)
+    all_paragraphs = list(doc.paragraphs)
+
+    # Parse and add all bullet/numbered lists as flowables
+    bullet_flowables = parse_bullet_lists(all_paragraphs, styles)
+    story.extend(bullet_flowables)
+
+    # Now process paragraphs for title, headings, normal paragraphs
     for para in doc.paragraphs:
         text = para.text.strip()
         if not text:
@@ -37,9 +46,9 @@ def parse_docx_to_story(docx_path, styles):
             headings.append((text, level))
             story.append(Paragraph(text, styles['BookHeading']))
             story.append(Spacer(1, 12))
-        # Bullet or numbered list
-        elif para.style.name.lower().startswith('list'):
-            story.append(Paragraph(f"&bull; {text}", styles['BookBody']))
+        # Already handled by bullets.py: skip any paragraph that's a list
+        elif "list" in para.style.name.lower() or "bullet" in para.style.name.lower() or "number" in para.style.name.lower():
+            continue
         # Body text (default)
         else:
             # Inline formatting (bold/italic) support
