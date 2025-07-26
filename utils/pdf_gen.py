@@ -31,8 +31,8 @@ def generate_pdf(
     body_size,
     trim_size,
     bleed,
-    generate_toc=False  # <-- new param, set by frontend
-    **kwargs
+    generate_toc=False,  # <-- new param, set by frontend
+    **kwargs             # <-- this will remove any extra parameters that are not defined here
 ):
     """
     Generate a KDP-ready PDF with conditional Table of Contents.
