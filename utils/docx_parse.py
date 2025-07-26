@@ -4,6 +4,7 @@ from reportlab.platypus import Paragraph, Spacer
 from .bullets import parse_bullet_lists
 from .tables import parse_tables
 from .images import parse_images
+from .headings import process_heading  # NEW IMPORT
 
 def parse_docx_to_story(docx_path, styles):
     """
@@ -38,14 +39,13 @@ def parse_docx_to_story(docx_path, styles):
                 else:
                     break
             flowables = parse_bullet_lists(list_block, styles)
-            # Defensive: ensure it's always a list of Flowables
             if isinstance(flowables, list):
                 story.extend([f for f in flowables if hasattr(f, 'wrap')])
             i -= 1  # adjust for outer loop increment
         # Book title (first "Title" style paragraph)
         elif not title_found and para_style_name.startswith('title'):
-            story.append(Paragraph(text, styles['heading']))
-            story.append(Spacer(1, 18))
+            # Use heading processing for the title as well
+            story.extend(process_heading(text, 1, styles))
             title_found = True
         # Heading (for TOC)
         elif para.style.name.startswith('Heading') and not (
@@ -56,8 +56,7 @@ def parse_docx_to_story(docx_path, styles):
             except Exception:
                 level = 1
             headings.append((text, level))
-            story.append(Paragraph(text, styles['heading']))
-            story.append(Spacer(1, 12))
+            story.extend(process_heading(text, level, styles))
         else:
             # Inline formatting (bold/italic) support for body
             run_fragments = []
